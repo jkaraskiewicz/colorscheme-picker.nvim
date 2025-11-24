@@ -48,8 +48,28 @@ function M.open()
   local selected = nil
   local last_item = nil
 
+  -- Find the index of the current colorscheme
+  local current_idx = nil
+  if original then
+    for i, scheme in ipairs(colorschemes) do
+      if scheme == original then
+        current_idx = i
+        break
+      end
+    end
+  end
+
   -- Create timer for live preview
   local timer = vim.loop.new_timer()
+
+  -- Schedule setting the initial position after picker starts
+  if current_idx then
+    vim.schedule(function()
+      if MiniPick.is_picker_active() then
+        MiniPick.set_picker_match_inds({ current_idx }, 'current')
+      end
+    end)
+  end
 
   -- Function to check and apply current item
   local function update_preview()

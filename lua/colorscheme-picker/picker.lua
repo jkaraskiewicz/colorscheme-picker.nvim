@@ -2,6 +2,38 @@ local M = {}
 
 local storage = require('colorscheme-picker.storage')
 
+-- Sample code for preview
+local sample_code = {
+  '-- Lua function example',
+  'local function greet(name)',
+  '  local message = "Hello, " .. name',
+  '  print(message)',
+  '  return message',
+  'end',
+  '',
+  '-- String and numbers',
+  'local text = "Sample text"',
+  'local number = 42',
+  'local boolean = true',
+  '',
+  '-- Conditional',
+  'if number > 10 then',
+  '  print("Greater than 10")',
+  'else',
+  '  print("Less or equal")',
+  'end',
+  '',
+  '-- Table',
+  'local config = {',
+  '  name = "example",',
+  '  count = 100,',
+  '  enabled = true,',
+  '}',
+  '',
+  '-- Function call',
+  'greet("World")',
+}
+
 -- Open the colorscheme picker with live preview
 function M.open()
   local ok, MiniPick = pcall(require, 'mini.pick')
@@ -33,14 +65,29 @@ function M.open()
       items = colorschemes,
       name = 'Colorschemes (live preview)',
       choose = function(item)
+        -- Stop timer when choosing
+        timer:stop()
+        timer:close()
         return item
+      end,
+      preview = function(buf_id, item)
+        -- Show sample code in preview buffer
+        if buf_id and vim.api.nvim_buf_is_valid(buf_id) then
+          vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, sample_code)
+          vim.bo[buf_id].filetype = 'lua'
+          vim.bo[buf_id].bufhidden = 'wipe'
+        end
       end,
     },
   })
 
-  -- Stop timer after picker closes
-  timer:stop()
-  timer:close()
+  -- Stop timer after picker closes (if not already stopped)
+  if timer then
+    pcall(function()
+      timer:stop()
+      timer:close()
+    end)
+  end
 
   -- Handle result
   if result then

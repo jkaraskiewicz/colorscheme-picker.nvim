@@ -45,31 +45,21 @@ function M.open()
   -- Get all available colorschemes
   local colorschemes = vim.fn.getcompletion('', 'color')
   local original = vim.g.colors_name
-  local last_item = nil
-
-  -- Create autocmd for live preview using MiniPickMatch event
-  local augroup = vim.api.nvim_create_augroup('ColorschemePickerLivePreview', { clear = true })
-  vim.api.nvim_create_autocmd('User', {
-    group = augroup,
-    pattern = 'MiniPickMatch',
-    callback = function()
-      local matches = MiniPick.get_picker_matches()
-      if matches and matches.current and matches.current ~= last_item then
-        last_item = matches.current
-        pcall(vim.cmd, 'colorscheme ' .. matches.current)
-      end
-    end,
-  })
+  local selected = nil
 
   -- Start the picker
   local result = MiniPick.start({
     source = {
       items = colorschemes,
-      name = 'Colorschemes (live preview)',
+      name = 'Colorschemes',
       choose = function(item)
-        return item
+        -- Save the selection
+        selected = item
       end,
       preview = function(buf_id, item)
+        -- Apply colorscheme live as user navigates
+        pcall(vim.cmd, 'colorscheme ' .. item)
+
         -- Show sample code in preview buffer
         if buf_id and vim.api.nvim_buf_is_valid(buf_id) then
           vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, sample_code)
@@ -80,14 +70,12 @@ function M.open()
     },
   })
 
-  -- Clean up autocmd
-  vim.api.nvim_del_augroup_by_id(augroup)
-
   -- Handle result
-  if result then
-    -- Theme was selected with Enter
-    storage.save_current(result)
-    vim.notify('Applied colorscheme: ' .. result, vim.log.levels.INFO)
+  if result and selected then
+    -- Theme was selected with Enter - apply and save it
+    pcall(vim.cmd, 'colorscheme ' .. selected)
+    storage.save_current(selected)
+    vim.notify('Applied colorscheme: ' .. selected, vim.log.levels.INFO)
   elseif original then
     -- Cancelled with Escape - restore original
     pcall(vim.cmd, 'colorscheme ' .. original)

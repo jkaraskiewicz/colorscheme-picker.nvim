@@ -62,13 +62,21 @@ function M.open()
   -- Create timer for live preview
   local timer = vim.loop.new_timer()
 
-  -- Schedule setting the initial position after picker starts
+  -- Set initial position after picker starts using MiniPickStart event
   if current_idx then
-    vim.schedule(function()
-      if MiniPick.is_picker_active() then
-        MiniPick.set_picker_match_inds({ current_idx }, 'current')
-      end
-    end)
+    local augroup = vim.api.nvim_create_augroup('ColorschemePickerInitPos', { clear = true })
+    vim.api.nvim_create_autocmd('User', {
+      group = augroup,
+      pattern = 'MiniPickStart',
+      once = true,
+      callback = function()
+        vim.schedule(function()
+          if MiniPick.is_picker_active() then
+            MiniPick.set_picker_match_inds({ current_idx }, 'current')
+          end
+        end)
+      end,
+    })
   end
 
   -- Function to check and apply current item

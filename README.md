@@ -19,40 +19,29 @@ A lightweight Neovim colorscheme manager with live preview, persistence, and fav
 
 ## Installation
 
-### With lazy.nvim
+### Basic Setup
 
 ```lua
-{
-  'your-username/colorscheme-picker.nvim',
+local themes = {
+  'catppuccin/nvim',
+  'folke/tokyonight.nvim',
+  'ellisonleao/gruvbox.nvim',
+  'rose-pine/neovim',
+  -- Add more themes...
+}
+
+return {
+  'jkaraskiewicz/colorscheme-picker.nvim',
   lazy = false,
   priority = 1000,
-  config = {
-    'catppuccin/nvim',
-    'folke/tokyonight.nvim',
-    'ellisonleao/gruvbox.nvim',
-    'rose-pine/neovim',
-    -- Add more themes...
-  },
+  dependencies = themes,
+  config = function()
+    local config = vim.deepcopy(themes)
+    config.default = 'catppuccin'
+    require('colorscheme-picker').setup(config)
+  end,
   keys = {
     { '<leader>mc', ':ColorschemePickerOpen<cr>', desc = 'Colorschemes' },
-  },
-}
-```
-
-### With Default Theme
-
-```lua
-{
-  'your-username/colorscheme-picker.nvim',
-  lazy = false,
-  priority = 1000,
-  opts = {
-    default = 'catppuccin', -- Fallback if no saved theme
-  },
-  config = {
-    'catppuccin/nvim',
-    'folke/tokyonight.nvim',
-    -- ...
   },
 }
 ```
@@ -62,25 +51,35 @@ A lightweight Neovim colorscheme manager with live preview, persistence, and fav
 Some themes require setup before activation:
 
 ```lua
-{
-  'your-username/colorscheme-picker.nvim',
+local themes = {
+  'catppuccin/nvim',
+  {
+    'datsfilipe/vesper.nvim',
+    before = function(theme)
+      require('vesper').setup({
+        italics = {
+          comments = false,
+          keywords = false,
+          functions = false,
+        },
+      })
+    end,
+  },
+  -- Add more themes...
+}
+
+return {
+  'jkaraskiewicz/colorscheme-picker.nvim',
   lazy = false,
   priority = 1000,
-  config = {
-    'catppuccin/nvim',
-    {
-      'datsfilipe/vesper.nvim',
-      before = function(theme)
-        require('vesper').setup({
-          italics = {
-            comments = false,
-            keywords = false,
-            functions = false,
-          },
-        })
-      end,
-    },
-    -- ...
+  dependencies = themes,
+  config = function()
+    local config = vim.deepcopy(themes)
+    config.default = 'catppuccin'
+    require('colorscheme-picker').setup(config)
+  end,
+  keys = {
+    { '<leader>mc', ':ColorschemePickerOpen<cr>', desc = 'Colorschemes' },
   },
 }
 ```
@@ -121,13 +120,10 @@ picker.load_colorscheme()
 
 ### Options
 
+The plugin accepts a config table with themes and an optional `default` field:
+
 ```lua
-{
-  'your-username/colorscheme-picker.nvim',
-  opts = {
-    default = 'default', -- Default colorscheme if none saved
-  },
-}
+config.default = 'catppuccin'  -- Default colorscheme if none saved
 ```
 
 ### Theme Specification Format

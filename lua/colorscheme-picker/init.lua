@@ -2,66 +2,28 @@ local M = {}
 
 local storage = require('colorscheme-picker.storage')
 local picker = require('colorscheme-picker.picker')
+local manager = require('colorscheme-picker.manager')
 
--- Store theme configs for before functions
-M.theme_configs = {}
 M.default_colorscheme = nil
 
--- Process a theme spec and normalize it
-local function process_theme_spec(spec)
-  if type(spec) == 'string' then
-    return { spec }
-  elseif type(spec) == 'table' then
-    local processed = { spec[1] or spec.url }
-
-    -- Copy other fields
-    for k, v in pairs(spec) do
-      if k ~= 1 and k ~= 'url' and k ~= 'before' then
-        processed[k] = v
-      end
-    end
-
-    -- Store before function separately
-    if spec.before then
-      local theme_name = spec.name or (spec[1] or spec.url):match('([^/]+)$')
-      M.theme_configs[theme_name] = { before = spec.before }
-    end
-
-    return processed
-  end
-  return nil
-end
-
--- Setup function that processes the theme list
-function M.setup(opts)
-  opts = opts or {}
-
-  -- Handle two cases:
-  -- 1. opts is a list of themes (themify-style API: { 'theme1', 'theme2', default = 'x' })
-  -- 2. opts is a config table with named fields (opts = { default = 'x', themes = {...} })
-
-  local theme_list = {}
+-- Setup function that processes the theme list (themify-style API)
+function M.setup(config)
+  config = config or {}
 
   -- Extract default if present
-  if opts.default then
-    M.default_colorscheme = opts.default
+  if config.default then
+    M.default_colorscheme = config.default
   end
 
-  -- Check if opts is an array (list of themes)
-  if #opts > 0 then
-    -- Extract all numeric indices (the themes)
-    for i = 1, #opts do
-      table.insert(theme_list, opts[i])
-    end
-  elseif opts.themes then
-    -- Standard config format
-    theme_list = opts.themes
+  -- Process theme list (themify-style: config is array with themes)
+  -- Themes are the numeric indices of the config table
+  local theme_list = {}
+  for i = 1, #config do
+    table.insert(theme_list, config[i])
   end
 
-  -- Process theme list and store before functions
-  for _, theme_spec in ipairs(theme_list) do
-    local _ = process_theme_spec(theme_spec)
-  end
+  -- Install and load all themes
+  manager.process_themes(theme_list)
 
   -- Load and apply saved colorscheme
   M.load_colorscheme()
@@ -77,12 +39,13 @@ function M.load_colorscheme()
   local saved = storage.load_current()
   local colorscheme = saved or M.default_colorscheme or 'default'
 
-  -- Call before function if it exists
-  local theme_config = M.theme_configs[colorscheme]
-  if theme_config and theme_config.before then
-    local ok, err = pcall(theme_config.before, colorscheme)
-    if not ok then
-      vim.notify('Error in before function for ' .. colorscheme .. ': ' .. tostring(err), vim.log.levels.WARN)
+  -- Call before function if it exists (from manager)
+  for repo, theme_info in pairs(manager.themes) do
+    if theme_info.before then
+      local ok, err = pcall(theme_info.before, colorscheme)
+      if not ok then
+        vim.notify('Error in before function: ' .. tostring(err), vim.log.levels.WARN)
+      end
     end
   end
 
@@ -105,12 +68,13 @@ end
 
 -- Apply a specific colorscheme
 function M.apply(colorscheme)
-  -- Call before function if it exists
-  local theme_config = M.theme_configs[colorscheme]
-  if theme_config and theme_config.before then
-    local ok, err = pcall(theme_config.before, colorscheme)
-    if not ok then
-      vim.notify('Error in before function for ' .. colorscheme .. ': ' .. tostring(err), vim.log.levels.WARN)
+  -- Call before function if it exists (from manager)
+  for repo, theme_info in pairs(manager.themes) do
+    if theme_info.before then
+      local ok, err = pcall(theme_info.before, colorscheme)
+      if not ok then
+        vim.notify('Error in before function: ' .. tostring(err), vim.log.levels.WARN)
+      end
     end
   end
 

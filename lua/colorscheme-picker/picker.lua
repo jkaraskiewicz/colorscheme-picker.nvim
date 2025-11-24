@@ -13,32 +13,19 @@ function M.open()
   -- Get all available colorschemes
   local colorschemes = vim.fn.getcompletion('', 'color')
   local original = vim.g.colors_name
-  local last_preview = nil
 
-  -- Create autocmd for live preview on cursor move
-  local preview_group = vim.api.nvim_create_augroup('ColorschemePickerPreview', { clear = true })
+  -- Setup timer for live preview
+  local timer = vim.loop.new_timer()
+  local last_item = nil
 
-  local function apply_preview()
-    -- Get current picker state
-    local picker_matches = MiniPick.get_picker_matches()
-    if not picker_matches or not picker_matches.current then
-      return
+  -- Continuously check for cursor movement in picker (every 50ms)
+  timer:start(0, 50, vim.schedule_wrap(function()
+    local matches = MiniPick.get_picker_matches()
+    if matches and matches.current and matches.current ~= last_item then
+      last_item = matches.current
+      pcall(vim.cmd, 'colorscheme ' .. matches.current)
     end
-
-    local current_item = picker_matches.current
-    if current_item and current_item ~= last_preview then
-      last_preview = current_item
-      pcall(vim.cmd, 'colorscheme ' .. current_item)
-    end
-  end
-
-  -- Set up live preview on cursor move
-  vim.api.nvim_create_autocmd('CursorMoved', {
-    group = preview_group,
-    callback = function()
-      vim.schedule(apply_preview)
-    end,
-  })
+  end))
 
   -- Start the picker
   local result = MiniPick.start({
@@ -51,8 +38,9 @@ function M.open()
     },
   })
 
-  -- Clean up autocmd
-  vim.api.nvim_del_augroup_by_id(preview_group)
+  -- Stop timer after picker closes
+  timer:stop()
+  timer:close()
 
   -- Handle result
   if result then

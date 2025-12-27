@@ -1,6 +1,7 @@
 local M = {}
 
 local storage = require('colorscheme-picker.storage')
+local manager = require('colorscheme-picker.manager')
 
 -- Sample code for preview
 local sample_code = {
@@ -34,6 +35,95 @@ local sample_code = {
   'greet("World")',
 }
 
+-- Categorize colorschemes into groups
+local function categorize_colorschemes(colorschemes)
+  local categories = {
+    configured = {}, -- From managed plugins
+    builtin = {},    -- Neovim built-ins
+    external = {},   -- Other sources
+  }
+
+  for _, name in ipairs(colorschemes) do
+    if manager.is_managed_colorscheme(name) then
+      table.insert(categories.configured, name)
+    elseif manager.is_builtin_colorscheme(name) then
+      table.insert(categories.builtin, name)
+    else
+      table.insert(categories.external, name)
+    end
+  end
+
+  -- Sort each category alphabetically
+  table.sort(categories.configured)
+  table.sort(categories.builtin)
+  table.sort(categories.external)
+
+  return categories
+end
+
+-- Format a colorscheme name with plugin attribution
+-- Returns: { display = "formatted string", name = "colorscheme-name" }
+local function format_colorscheme_item(name, max_name_len, plugin_repo)
+  local padding = string.rep(' ', max_name_len - #name + 2)
+  local plugin_display
+
+  if plugin_repo == '__builtin__' then
+    plugin_display = 'Built-in'
+  elseif plugin_repo:match('^__external__:') then
+    local external_name = plugin_repo:match('^__external__:(.+)$')
+    plugin_display = external_name or 'External'
+  elseif plugin_repo == '__external__' then
+    plugin_display = 'External'
+  else
+    plugin_display = plugin_repo
+  end
+
+  return {
+    display = name .. padding .. '[' .. plugin_display .. ']',
+    name = name,
+  }
+end
+
+-- Build formatted picker items with sections
+local function build_picker_items(colorschemes)
+  local categories = categorize_colorschemes(colorschemes)
+  local items = {}
+  local item_map = {} -- Maps index to actual colorscheme name
+  local max_name_len = 0
+
+  -- Calculate max name length across all categories
+  for _, name in ipairs(colorschemes) do
+    max_name_len = math.max(max_name_len, #name)
+  end
+
+  -- Helper to add items from a category
+  local function add_category(category_name, colorscheme_list)
+    if #colorscheme_list == 0 then
+      return
+    end
+
+    -- Add section separator
+    local separator = string.rep('─', 10) .. ' ' .. category_name .. ' ' .. string.rep('─', 10)
+    table.insert(items, separator)
+    table.insert(item_map, nil) -- Separators map to nil
+
+    -- Add colorschemes
+    for _, name in ipairs(colorscheme_list) do
+      local plugin = manager.get_colorscheme_plugin(name)
+      local item = format_colorscheme_item(name, max_name_len, plugin)
+      table.insert(items, item.display)
+      table.insert(item_map, name) -- Map to actual colorscheme name
+    end
+  end
+
+  -- Build sections
+  add_category('Configured Themes', categories.configured)
+  add_category('Built-in Themes', categories.builtin)
+  add_category('External Themes', categories.external)
+
+  return items, item_map
+end
+
 -- Open the colorscheme picker with live preview
 function M.open()
   local ok, MiniPick = pcall(require, 'mini.pick')
@@ -43,16 +133,20 @@ function M.open()
   end
 
   -- Get all available colorschemes
-  local colorschemes = vim.fn.getcompletion('', 'color')
+  local all_colorschemes = vim.fn.getcompletion('', 'color')
+
+  -- Build formatted items with sections
+  local display_items, item_map = build_picker_items(all_colorschemes)
+
   local original = vim.g.colors_name
   local selected = nil
-  local last_item = nil
+  local last_item_idx = nil
 
-  -- Find the index of the current colorscheme
+  -- Find the index of the current colorscheme in display items
   local current_idx = nil
   if original then
-    for i, scheme in ipairs(colorschemes) do
-      if scheme == original then
+    for i, colorscheme_name in ipairs(item_map) do
+      if colorscheme_name == original then
         current_idx = i
         break
       end
@@ -86,9 +180,16 @@ function M.open()
     end
 
     local matches = MiniPick.get_picker_matches()
-    if matches and matches.current and matches.current ~= last_item then
-      last_item = matches.current
-      pcall(vim.cmd, 'colorscheme ' .. matches.current)
+    if matches and matches.current_ind and matches.current_ind ~= last_item_idx then
+      last_item_idx = matches.current_ind
+
+      -- Get actual colorscheme name from item_map
+      local colorscheme_name = item_map[last_item_idx]
+
+      -- Skip if it's a separator (nil in item_map)
+      if colorscheme_name then
+        pcall(vim.cmd, 'colorscheme ' .. colorscheme_name)
+      end
     end
   end
 
@@ -98,11 +199,28 @@ function M.open()
   -- Start the picker
   local result = MiniPick.start({
     source = {
-      items = colorschemes,
+      items = display_items,
       name = 'Colorschemes',
       choose = function(item)
-        -- Save the selection and stop timer
-        selected = item
+        -- Extract colorscheme name from the selected display item
+        -- Find the item in display_items to get its index
+        local idx = nil
+        for i, display in ipairs(display_items) do
+          if display == item then
+            idx = i
+            break
+          end
+        end
+
+        -- Get actual colorscheme name from item_map
+        if idx then
+          selected = item_map[idx]
+          -- Skip if separator was somehow selected
+          if not selected then
+            return
+          end
+        end
+
         timer:stop()
         timer:close()
       end,

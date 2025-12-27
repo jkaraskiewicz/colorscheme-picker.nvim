@@ -8,6 +8,65 @@ M.themes_path = vim.fn.stdpath('data') .. '/colorscheme-picker/themes'
 -- Installed themes
 M.themes = {}
 
+-- Colorscheme mapping data
+M.colorscheme_mapping = {
+  by_name = {},    -- colorscheme -> plugin repo
+  by_plugin = {},  -- plugin repo -> colorschemes array
+}
+
+-- Built-in Neovim colorschemes (fallback list)
+local BUILTIN_THEMES = {
+  'blue',
+  'darkblue',
+  'default',
+  'delek',
+  'desert',
+  'elflord',
+  'evening',
+  'habamax',
+  'industry',
+  'koehler',
+  'lunaperche',
+  'morning',
+  'murphy',
+  'pablo',
+  'peachpuff',
+  'quiet',
+  'ron',
+  'shine',
+  'slate',
+  'torte',
+  'vim',
+  'zellner',
+}
+
+-- Scan a plugin directory for colorscheme files
+-- Returns array of colorscheme names (without .vim/.lua extension)
+local function scan_plugin_colorschemes(plugin_path)
+  local colorschemes = {}
+  local colors_dir = plugin_path .. '/colors'
+
+  -- Check if colors directory exists
+  if vim.fn.isdirectory(colors_dir) == 0 then
+    return colorschemes
+  end
+
+  -- Get all files in colors directory
+  local files = vim.fn.readdir(colors_dir, function(item)
+    return item:match('%.vim$') or item:match('%.lua$')
+  end)
+
+  -- Extract colorscheme names (remove extensions)
+  for _, file in ipairs(files) do
+    local name = file:match('(.+)%.vim$') or file:match('(.+)%.lua$')
+    if name then
+      table.insert(colorschemes, name)
+    end
+  end
+
+  return colorschemes
+end
+
 -- Parse repository string to get author/name
 local function parse_repo(repo)
   if repo:match('^https://') then
@@ -119,6 +178,104 @@ function M.clean_unused_themes()
   end
 end
 
+-- Discover colorschemes provided by a theme repo
+-- Updates M.colorscheme_mapping
+local function discover_theme_colorschemes(repo)
+  local path = get_theme_path(repo)
+  if not path or vim.fn.isdirectory(path) == 0 then
+    return
+  end
+
+  local colorschemes = scan_plugin_colorschemes(path)
+
+  -- Update bidirectional mapping
+  M.colorscheme_mapping.by_plugin[repo] = colorschemes
+  for _, name in ipairs(colorschemes) do
+    M.colorscheme_mapping.by_name[name] = repo
+  end
+end
+
+-- Identify and mark built-in Neovim colorschemes
+local function identify_builtin_themes()
+  local vimruntime = vim.env.VIMRUNTIME
+  if not vimruntime then
+    -- Fallback to hardcoded list
+    M.colorscheme_mapping.by_plugin['__builtin__'] = BUILTIN_THEMES
+    for _, name in ipairs(BUILTIN_THEMES) do
+      M.colorscheme_mapping.by_name[name] = '__builtin__'
+    end
+    return
+  end
+
+  -- Scan runtime colors directory
+  local builtins = scan_plugin_colorschemes(vimruntime)
+
+  M.colorscheme_mapping.by_plugin['__builtin__'] = builtins
+  for _, name in ipairs(builtins) do
+    M.colorscheme_mapping.by_name[name] = '__builtin__'
+  end
+end
+
+-- Scan all runtime paths to discover colorschemes from external plugins
+-- (plugins not managed by colorscheme-picker but in runtimepath)
+local function discover_runtimepath_colorschemes()
+  -- Get all runtime paths
+  local rtps = vim.api.nvim_list_runtime_paths()
+
+  for _, rtp in ipairs(rtps) do
+    -- Skip paths we already know about
+    local is_managed = false
+    for repo, _ in pairs(M.themes) do
+      if rtp == get_theme_path(repo) then
+        is_managed = true
+        break
+      end
+    end
+
+    -- Skip VIMRUNTIME (handled separately)
+    if rtp == vim.env.VIMRUNTIME then
+      is_managed = true
+    end
+
+    if not is_managed then
+      local colorschemes = scan_plugin_colorschemes(rtp)
+      if #colorschemes > 0 then
+        -- Extract plugin name from path (best effort)
+        local plugin_name = rtp:match('/([^/]+)$') or 'Unknown'
+        local external_key = '__external__:' .. plugin_name
+
+        M.colorscheme_mapping.by_plugin[external_key] = colorschemes
+        for _, name in ipairs(colorschemes) do
+          -- Only map if not already mapped
+          if not M.colorscheme_mapping.by_name[name] then
+            M.colorscheme_mapping.by_name[name] = external_key
+          end
+        end
+      end
+    end
+  end
+end
+
+-- Build complete colorscheme mapping
+function M.build_colorscheme_mapping()
+  -- Reset mapping
+  M.colorscheme_mapping = {
+    by_name = {},
+    by_plugin = {},
+  }
+
+  -- 1. Discover managed themes
+  for repo, _ in pairs(M.themes) do
+    discover_theme_colorschemes(repo)
+  end
+
+  -- 2. Identify built-in themes
+  identify_builtin_themes()
+
+  -- 3. Discover external plugins in runtimepath
+  discover_runtimepath_colorschemes()
+end
+
 -- Process theme list and install all themes
 function M.process_themes(themes_config)
   -- First, process all themes in config
@@ -150,10 +307,34 @@ function M.process_themes(themes_config)
     end
   end
 
-  -- Then clean up unused themes
+  -- Then clean up unused themes and build colorscheme mapping
   vim.schedule(function()
     M.clean_unused_themes()
+    -- Build colorscheme mapping after all themes are processed
+    M.build_colorscheme_mapping()
   end)
+end
+
+-- Get plugin source for a colorscheme name
+-- Returns: plugin repo string or special marker
+function M.get_colorscheme_plugin(colorscheme_name)
+  return M.colorscheme_mapping.by_name[colorscheme_name] or '__external__'
+end
+
+-- Get all colorschemes from a plugin
+function M.get_plugin_colorschemes(plugin_repo)
+  return M.colorscheme_mapping.by_plugin[plugin_repo] or {}
+end
+
+-- Check if colorscheme is from managed plugin
+function M.is_managed_colorscheme(colorscheme_name)
+  local plugin = M.get_colorscheme_plugin(colorscheme_name)
+  return M.themes[plugin] ~= nil
+end
+
+-- Check if colorscheme is built-in
+function M.is_builtin_colorscheme(colorscheme_name)
+  return M.get_colorscheme_plugin(colorscheme_name) == '__builtin__'
 end
 
 return M

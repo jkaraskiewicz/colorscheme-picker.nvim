@@ -132,6 +132,11 @@ function M.open()
     return
   end
 
+  -- Build colorscheme mapping on first open
+  if not manager.mapping_built then
+    manager.build_colorscheme_mapping()
+  end
+
   -- Get all available colorschemes
   local all_colorschemes = vim.fn.getcompletion('', 'color')
 

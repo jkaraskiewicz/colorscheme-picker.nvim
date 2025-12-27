@@ -13,6 +13,7 @@ M.colorscheme_mapping = {
   by_name = {},    -- colorscheme -> plugin repo
   by_plugin = {},  -- plugin repo -> colorschemes array
 }
+M.mapping_built = false
 
 -- Built-in Neovim colorschemes (fallback list)
 local BUILTIN_THEMES = {
@@ -274,6 +275,8 @@ function M.build_colorscheme_mapping()
 
   -- 3. Discover external plugins in runtimepath
   discover_runtimepath_colorschemes()
+
+  M.mapping_built = true
 end
 
 -- Process theme list and install all themes
@@ -307,11 +310,9 @@ function M.process_themes(themes_config)
     end
   end
 
-  -- Then clean up unused themes and build colorscheme mapping
+  -- Then clean up unused themes
   vim.schedule(function()
     M.clean_unused_themes()
-    -- Build colorscheme mapping after all themes are processed
-    M.build_colorscheme_mapping()
   end)
 end
 

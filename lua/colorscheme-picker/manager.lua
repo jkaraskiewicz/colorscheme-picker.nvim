@@ -183,11 +183,18 @@ end
 -- Updates M.colorscheme_mapping
 local function discover_theme_colorschemes(repo)
   local path = get_theme_path(repo)
-  if not path or vim.fn.isdirectory(path) == 0 then
+  if not path then
+    vim.notify('No path for repo: ' .. repo, vim.log.levels.WARN)
+    return
+  end
+
+  if vim.fn.isdirectory(path) == 0 then
+    vim.notify('Directory not found: ' .. path, vim.log.levels.WARN)
     return
   end
 
   local colorschemes = scan_plugin_colorschemes(path)
+  vim.notify('Scanned ' .. path .. ' - found ' .. #colorschemes .. ' themes', vim.log.levels.INFO)
 
   -- Update bidirectional mapping
   M.colorscheme_mapping.by_plugin[repo] = colorschemes
@@ -264,6 +271,13 @@ function M.build_colorscheme_mapping()
     by_name = {},
     by_plugin = {},
   }
+
+  -- Debug: Show registered themes
+  local theme_count = 0
+  for repo, _ in pairs(M.themes) do
+    theme_count = theme_count + 1
+  end
+  vim.notify('Building mapping for ' .. theme_count .. ' registered themes', vim.log.levels.INFO)
 
   -- 1. Discover managed themes
   for repo, _ in pairs(M.themes) do

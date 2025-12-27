@@ -135,6 +135,16 @@ function M.open()
   -- Build colorscheme mapping on first open
   if not manager.mapping_built then
     manager.build_colorscheme_mapping()
+
+    -- Debug: Show what was found
+    local managed_count = 0
+    for repo, schemes in pairs(manager.colorscheme_mapping.by_plugin) do
+      if manager.themes[repo] then
+        managed_count = managed_count + #schemes
+        vim.notify('Found ' .. #schemes .. ' themes in ' .. repo, vim.log.levels.INFO)
+      end
+    end
+    vim.notify('Total managed themes: ' .. managed_count, vim.log.levels.INFO)
   end
 
   -- Get all available colorschemes

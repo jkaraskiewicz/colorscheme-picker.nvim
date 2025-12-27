@@ -6,7 +6,7 @@ local manager = require('colorscheme-picker.manager')
 
 M.default_colorscheme = nil
 
--- Setup function that processes the theme list (themify-style API)
+-- Setup function that processes the theme list
 function M.setup(config)
   config = config or {}
 
@@ -15,12 +15,8 @@ function M.setup(config)
     M.default_colorscheme = config.default
   end
 
-  -- Process theme list (themify-style: config is array with themes)
-  -- Themes are the numeric indices of the config table
-  local theme_list = {}
-  for i = 1, #config do
-    table.insert(theme_list, config[i])
-  end
+  -- Extract theme list from explicit themes array
+  local theme_list = config.themes or {}
 
   -- Install and load all themes
   manager.process_themes(theme_list)

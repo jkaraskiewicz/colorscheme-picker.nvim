@@ -36,9 +36,10 @@ return {
   priority = 1000,
   dependencies = themes,
   config = function()
-    local config = vim.deepcopy(themes)
-    config.default = 'catppuccin'
-    require('colorscheme-picker').setup(config)
+    require('colorscheme-picker').setup({
+      themes = themes,
+      default = 'catppuccin',
+    })
   end,
   keys = {
     { '<leader>mc', ':ColorschemePickerOpen<cr>', desc = 'Colorschemes' },
@@ -74,9 +75,10 @@ return {
   priority = 1000,
   dependencies = themes,
   config = function()
-    local config = vim.deepcopy(themes)
-    config.default = 'catppuccin'
-    require('colorscheme-picker').setup(config)
+    require('colorscheme-picker').setup({
+      themes = themes,
+      default = 'catppuccin',
+    })
   end,
   keys = {
     { '<leader>mc', ':ColorschemePickerOpen<cr>', desc = 'Colorschemes' },
@@ -120,11 +122,20 @@ picker.load_colorscheme()
 
 ### Options
 
-The plugin accepts a config table with themes and an optional `default` field:
+The plugin accepts a config table with the following structure:
 
 ```lua
-config.default = 'catppuccin'  -- Default colorscheme if none saved
+{
+  themes = {
+    -- Array of theme specifications (required)
+  },
+  default = 'theme-name',  -- Optional: fallback if no saved preference
+}
 ```
+
+**Options:**
+- `themes` (array, required): List of theme specifications (strings or tables with before/branch)
+- `default` (string, optional): Default colorscheme name if no saved preference exists
 
 ### Theme Specification Format
 

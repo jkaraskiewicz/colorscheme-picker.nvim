@@ -88,7 +88,6 @@ end
 local function build_picker_items(colorschemes)
   local categories = categorize_colorschemes(colorschemes)
   local items = {}
-  local item_map = {} -- Maps index to actual colorscheme name
   local max_name_len = 0
 
   -- Calculate max name length across all categories
@@ -105,14 +104,12 @@ local function build_picker_items(colorschemes)
     -- Add section separator
     local separator = string.rep('─', 10) .. ' ' .. category_name .. ' ' .. string.rep('─', 10)
     table.insert(items, separator)
-    table.insert(item_map, nil) -- Separators map to nil
 
     -- Add colorschemes
     for _, name in ipairs(colorscheme_list) do
       local plugin = manager.get_colorscheme_plugin(name)
       local item = format_colorscheme_item(name, max_name_len, plugin)
       table.insert(items, item.display)
-      table.insert(item_map, name) -- Map to actual colorscheme name
     end
   end
 
@@ -121,7 +118,7 @@ local function build_picker_items(colorschemes)
   add_category('Built-in Themes', categories.builtin)
   add_category('External Themes', categories.external)
 
-  return items, item_map
+  return items
 end
 
 -- Open the colorscheme picker with live preview
@@ -135,32 +132,85 @@ function M.open()
   -- Build colorscheme mapping on first open
   if not manager.mapping_built then
     manager.build_colorscheme_mapping()
-
-    -- Debug: Show what was found
-    local managed_count = 0
-    for repo, schemes in pairs(manager.colorscheme_mapping.by_plugin) do
-      if manager.themes[repo] then
-        managed_count = managed_count + #schemes
-        vim.notify('Found ' .. #schemes .. ' themes in ' .. repo, vim.log.levels.INFO)
-      end
-    end
-    vim.notify('Total managed themes: ' .. managed_count, vim.log.levels.INFO)
   end
 
   -- Get all available colorschemes
   local all_colorschemes = vim.fn.getcompletion('', 'color')
 
   -- Build formatted items with sections
-  local display_items, item_map = build_picker_items(all_colorschemes)
+  local display_items = build_picker_items(all_colorschemes)
 
   local original = vim.g.colors_name
   local selected = nil
+  local selected_plugin = nil
   local last_item_idx = nil
+
+  -- Helper to extract colorscheme name and plugin from display string
+  -- Returns: colorscheme_name, plugin_repo
+  local function extract_colorscheme_info(display_str)
+    if not display_str then
+      return nil, nil
+    end
+    -- Check if it's a separator (contains only dashes and text)
+    if display_str:match('^─+') then
+      return nil, nil
+    end
+    -- Extract name before the '[' and trim whitespace
+    local name = display_str:match('^(.-)%s*%[')
+    -- Extract plugin from within the brackets
+    local plugin = display_str:match('%[(.-)%]')
+
+    -- Normalize plugin display back to repo format
+    if plugin == 'Built-in' then
+      plugin = '__builtin__'
+    elseif plugin and plugin ~= 'External' then
+      -- Check if it's an external plugin or a real repo
+      local is_repo = plugin:match('/')
+      if not is_repo then
+        -- It's an external plugin name
+        plugin = '__external__:' .. plugin
+      end
+    else
+      plugin = '__external__'
+    end
+
+    return name, plugin
+  end
+
+  -- Apply a colorscheme from a specific plugin
+  -- Ensures the correct colorscheme is loaded even with name collisions
+  local function apply_colorscheme(name, plugin_repo)
+    if not name then
+      return
+    end
+
+    -- For managed themes, ensure the plugin's path is prioritized in runtimepath
+    if plugin_repo and manager.themes[plugin_repo] then
+      local plugin_path = manager.themes_path .. '/' .. plugin_repo:gsub('/', '-')
+      if vim.fn.isdirectory(plugin_path) == 1 then
+        -- Remove the path if it exists in runtimepath
+        local rtp = vim.opt.rtp:get()
+        local filtered_rtp = {}
+        for _, path in ipairs(rtp) do
+          if path ~= plugin_path then
+            table.insert(filtered_rtp, path)
+          end
+        end
+        -- Prepend the plugin path to ensure it's checked first
+        table.insert(filtered_rtp, 1, plugin_path)
+        vim.opt.rtp = filtered_rtp
+      end
+    end
+
+    -- Apply the colorscheme
+    pcall(vim.cmd, 'colorscheme ' .. name)
+  end
 
   -- Find the index of the current colorscheme in display items
   local current_idx = nil
   if original then
-    for i, colorscheme_name in ipairs(item_map) do
+    for i, display_item in ipairs(display_items) do
+      local colorscheme_name, _ = extract_colorscheme_info(display_item)
       if colorscheme_name == original then
         current_idx = i
         break
@@ -195,15 +245,15 @@ function M.open()
     end
 
     local matches = MiniPick.get_picker_matches()
-    if matches and matches.current_ind and matches.current_ind ~= last_item_idx then
-      last_item_idx = matches.current_ind
+    if matches and matches.current and matches.current ~= last_item_idx then
+      last_item_idx = matches.current
 
-      -- Get actual colorscheme name from item_map
-      local colorscheme_name = item_map[last_item_idx]
+      -- Extract colorscheme name and plugin from display string
+      local colorscheme_name, plugin_repo = extract_colorscheme_info(matches.current)
 
-      -- Skip if it's a separator (nil in item_map)
+      -- Apply if it's a valid colorscheme (not a separator)
       if colorscheme_name then
-        pcall(vim.cmd, 'colorscheme ' .. colorscheme_name)
+        apply_colorscheme(colorscheme_name, plugin_repo)
       end
     end
   end
@@ -217,24 +267,17 @@ function M.open()
       items = display_items,
       name = 'Colorschemes',
       choose = function(item)
-        -- Extract colorscheme name from the selected display item
-        -- Find the item in display_items to get its index
-        local idx = nil
-        for i, display in ipairs(display_items) do
-          if display == item then
-            idx = i
-            break
-          end
+        -- Extract colorscheme name and plugin from the display string
+        local colorscheme_name, plugin_repo = extract_colorscheme_info(item)
+
+        -- Skip if separator was somehow selected
+        if not colorscheme_name then
+          return
         end
 
-        -- Get actual colorscheme name from item_map
-        if idx then
-          selected = item_map[idx]
-          -- Skip if separator was somehow selected
-          if not selected then
-            return
-          end
-        end
+        selected = colorscheme_name
+        -- Store the plugin info for final application
+        selected_plugin = plugin_repo
 
         timer:stop()
         timer:close()
@@ -259,11 +302,12 @@ function M.open()
   -- Handle result
   if result and selected then
     -- Theme was selected with Enter - apply and save it
-    pcall(vim.cmd, 'colorscheme ' .. selected)
+    apply_colorscheme(selected, selected_plugin)
     storage.save_current(selected)
     vim.notify('Applied colorscheme: ' .. selected, vim.log.levels.INFO)
   elseif original then
     -- Cancelled with Escape - restore original
+    -- We don't know the plugin for the original, but it's already loaded so just apply by name
     pcall(vim.cmd, 'colorscheme ' .. original)
   end
 end

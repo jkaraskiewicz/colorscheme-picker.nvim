@@ -53,15 +53,16 @@ local function scan_plugin_colorschemes(plugin_path)
   end
 
   -- Get all files in colors directory
-  local files = vim.fn.readdir(colors_dir, function(item)
-    return item:match('%.vim$') or item:match('%.lua$')
-  end)
+  local files = vim.fn.readdir(colors_dir)
 
-  -- Extract colorscheme names (remove extensions)
+  -- Extract colorscheme names (filter and remove extensions)
   for _, file in ipairs(files) do
-    local name = file:match('(.+)%.vim$') or file:match('(.+)%.lua$')
-    if name then
-      table.insert(colorschemes, name)
+    -- Check if it's a .vim or .lua file
+    if file:match('%.vim$') or file:match('%.lua$') then
+      local name = file:match('(.+)%.vim$') or file:match('(.+)%.lua$')
+      if name then
+        table.insert(colorschemes, name)
+      end
     end
   end
 
